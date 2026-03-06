@@ -14,6 +14,8 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <!-- Marked.js for Markdown rendering -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+    <!-- JSZip for folder downloads -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <style>
       :root {
@@ -26,13 +28,13 @@
         --accent-hover: #2ea44f;
         --link-color: #58a6ff;
         --lang-bg: #21262d;
+        --dl-color: #1f6feb;
+        --dl-hover: #388bfd;
+        --folder-dl: #6e40c9;
+        --folder-dl-hover: #8b5cf6;
       }
 
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
 
       body {
         background-color: var(--bg-color);
@@ -42,16 +44,9 @@
         padding: 20px;
       }
 
-      .container {
-        max-width: 1200px;
-        margin: 0 auto;
-      }
+      .container { max-width: 1200px; margin: 0 auto; }
 
-      header {
-        text-align: center;
-        margin-bottom: 30px;
-        padding-top: 20px;
-      }
+      header { text-align: center; margin-bottom: 30px; padding-top: 20px; }
 
       h1 {
         font-size: 2.5rem;
@@ -96,9 +91,7 @@
         transition: border-color 0.2s;
       }
 
-      .search-box:focus-within {
-        border-color: var(--link-color);
-      }
+      .search-box:focus-within { border-color: var(--link-color); }
 
       .search-box input {
         flex: 1;
@@ -120,9 +113,7 @@
         transition: background 0.2s;
       }
 
-      .search-box button:hover {
-        background: var(--accent-hover);
-      }
+      .search-box button:hover { background: var(--accent-hover); }
 
       #profile-display {
         margin-top: 30px;
@@ -206,17 +197,8 @@
         margin-bottom: 8px;
       }
 
-      .repo-owner {
-        font-size: 0.8rem;
-        color: var(--text-secondary);
-      }
-
-      .repo-title {
-        color: var(--link-color);
-        font-size: 1.1rem;
-        font-weight: 700;
-        text-decoration: none;
-      }
+      .repo-owner { font-size: 0.8rem; color: var(--text-secondary); }
+      .repo-title { color: var(--link-color); font-size: 1.1rem; font-weight: 700; text-decoration: none; }
 
       .repo-description {
         font-size: 0.85rem;
@@ -266,35 +248,220 @@
       .view-btn:hover { background: var(--accent-hover); }
       .download-link:hover { background: #30363d; }
 
+      /* Load More */
+      #load-more-container {
+        display: none;
+        text-align: center;
+        margin-top: 28px;
+      }
+
+      #load-more-btn {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        padding: 12px 32px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      #load-more-btn:hover {
+        border-color: var(--link-color);
+        color: var(--link-color);
+        background: rgba(88, 166, 255, 0.05);
+      }
+
+      #load-more-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      #repo-count-label {
+        font-size: 0.82rem;
+        color: var(--text-secondary);
+        margin-top: 10px;
+      }
+
       /* Tree Viewer */
       #tree-viewer { display: none; margin-top: 10px; animation: fadeIn 0.4s ease-out; }
-      
+
       #breadcrumb {
         display: flex; align-items: center; gap: 8px; margin-bottom: 15px;
         padding: 10px; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);
         font-size: 0.9rem;
+        flex-wrap: wrap;
       }
       #breadcrumb span { cursor: pointer; color: var(--link-color); }
 
-      .tree-container { display: grid; grid-template-columns: 320px 1fr; gap: 20px; height: 500px; margin-bottom: 30px; }
-      #tree-list { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; overflow-y: auto; padding: 10px; }
-      #file-preview { 
-        background: var(--card-bg); 
-        border: 1px solid var(--border-color); 
-        border-radius: 12px; 
-        overflow: hidden; 
-        position: relative; 
+      /* Tree header bar with download current folder button */
+      .tree-header-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
       }
-      
+
+      .tree-container { display: grid; grid-template-columns: 340px 1fr; gap: 20px; height: 500px; margin-bottom: 30px; }
+      #tree-list { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; overflow-y: auto; padding: 10px; }
+      #file-preview {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        overflow: hidden;
+        position: relative;
+      }
+
       .preview-scroll { height: 100%; overflow: auto; padding: 0; display: flex; flex-direction: column; }
 
-      .tree-item {
-        display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px;
-        cursor: pointer; font-size: 0.9rem; transition: background 0.2s;
+      /* File preview header with download button */
+      .preview-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--border-color);
+        background: rgba(255,255,255,0.03);
+        min-height: 42px;
       }
+
+      .preview-filename {
+        font-size: 0.82rem;
+        color: var(--text-secondary);
+        font-family: 'Fira Code', monospace;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 70%;
+      }
+
+      .btn-dl-file {
+        background: var(--dl-color);
+        color: white;
+        border: none;
+        padding: 5px 12px;
+        border-radius: 5px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: background 0.2s;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .btn-dl-file:hover { background: var(--dl-hover); }
+      .btn-dl-file.hidden { display: none; }
+
+      /* Tree item with download button */
+      .tree-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 8px 5px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.88rem;
+        transition: background 0.2s;
+        position: relative;
+      }
+
       .tree-item:hover { background: rgba(255,255,255,0.05); }
+      .tree-item:hover .tree-item-dl { opacity: 1; }
+
+      .tree-item-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .tree-item-dl {
+        opacity: 0;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 4px;
+        padding: 2px 7px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .tree-item-dl:hover {
+        background: var(--dl-color);
+        border-color: var(--dl-color);
+        color: white;
+      }
+
+      .tree-item-dl.folder-dl:hover {
+        background: var(--folder-dl);
+        border-color: var(--folder-dl);
+        color: white;
+      }
+
       .folder { color: #e3b341; }
       .file { color: var(--text-secondary); }
+
+      /* Download progress toast */
+      #dl-toast {
+        position: fixed;
+        bottom: 28px;
+        right: 28px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 14px 20px;
+        font-size: 0.88rem;
+        color: var(--text-primary);
+        display: none;
+        z-index: 9999;
+        min-width: 260px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        animation: slideUp 0.2s ease-out;
+      }
+
+      #dl-toast.show { display: block; }
+
+      @keyframes slideUp {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .dl-toast-title { font-weight: 700; color: white; margin-bottom: 4px; }
+      .dl-toast-bar-wrap { background: #21262d; border-radius: 4px; height: 5px; margin-top: 8px; overflow: hidden; }
+      .dl-toast-bar { height: 100%; background: var(--link-color); border-radius: 4px; transition: width 0.2s; width: 0%; }
+      .dl-toast-msg { font-size: 0.78rem; color: var(--text-secondary); margin-top: 5px; }
+
+      /* Btn: download current folder (in tree header) */
+      .btn-dl-folder {
+        background: var(--folder-dl);
+        color: white;
+        border: none;
+        padding: 7px 14px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 0.2s;
+      }
+
+      .btn-dl-folder:hover { background: var(--folder-dl-hover); }
 
       /* README Section */
       #readme-container {
@@ -313,11 +480,7 @@
         font-weight: 600;
         color: white;
       }
-      #readme-content {
-        padding: 30px;
-        color: var(--text-primary);
-        line-height: 1.6;
-      }
+      #readme-content { padding: 30px; color: var(--text-primary); line-height: 1.6; }
       #readme-content h1, #readme-content h2, #readme-content h3 { margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
       #readme-content p { margin-bottom: 16px; }
       #readme-content code { padding: 0.2em 0.4em; background: rgba(110,118,129,0.4); border-radius: 6px; font-family: 'Fira Code', monospace; }
@@ -329,7 +492,7 @@
         margin: 0 !important;
         padding: 20px !important;
         background: transparent !important;
-        overflow: visible !important; /* Managed by parent .preview-scroll */
+        overflow: visible !important;
         width: 100%;
       }
 
@@ -337,11 +500,11 @@
         font-family: 'Fira Code', 'Consolas', monospace !important;
         font-size: 14px !important;
         line-height: 1.5 !important;
-        white-space: pre !important; /* FORCES LINE BREAKS */
+        white-space: pre !important;
         word-spacing: normal !important;
         word-break: normal !important;
         word-wrap: normal !important;
-        display: block !important; /* Ensure it behaves as a block for the pre-formatting */
+        display: block !important;
       }
 
       img.preview-img { display: block; max-width: 90%; max-height: 90%; margin: auto; border-radius: 8px; }
@@ -390,6 +553,15 @@
         </div>
 
         <div class="repo-grid" id="repo-grid"></div>
+
+        <!-- Load More -->
+        <div id="load-more-container">
+          <button id="load-more-btn">
+            <span class="material-icons" style="font-size:18px;">expand_more</span>
+            Load More Repositories
+          </button>
+          <div id="repo-count-label"></div>
+        </div>
       </div>
 
       <!-- Repo Tree Viewer Section -->
@@ -397,11 +569,24 @@
         <div class="back-to-grid" id="closeTree">
           <span class="material-icons">arrow_back</span> Back to Results
         </div>
-        <h2 id="viewing-repo-name" style="margin-bottom: 10px; color: white;"></h2>
+        <div class="tree-header-bar">
+          <h2 id="viewing-repo-name" style="color: white;"></h2>
+          <button class="btn-dl-folder" id="dl-current-folder-btn" title="Download current folder as ZIP">
+            <span class="material-icons" style="font-size:16px;">folder_zip</span>
+            Download Folder
+          </button>
+        </div>
         <div id="breadcrumb"></div>
         <div class="tree-container">
           <div id="tree-list"></div>
           <div id="file-preview">
+            <div class="preview-header">
+              <span class="preview-filename" id="preview-filename">No file selected</span>
+              <a class="btn-dl-file hidden" id="dl-file-btn" title="Download this file">
+                <span class="material-icons" style="font-size:14px;">download</span>
+                Download
+              </a>
+            </div>
             <div class="preview-scroll" id="preview-content">
                <p style="color: var(--text-secondary); text-align: center; margin-top: 100px;">Select a file to preview</p>
             </div>
@@ -419,6 +604,13 @@
       </div>
     </div>
 
+    <!-- Download progress toast -->
+    <div id="dl-toast">
+      <div class="dl-toast-title" id="dl-toast-title">Preparing download...</div>
+      <div class="dl-toast-bar-wrap"><div class="dl-toast-bar" id="dl-toast-bar"></div></div>
+      <div class="dl-toast-msg" id="dl-toast-msg">Starting...</div>
+    </div>
+
     <!-- Scripts for Prism -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
@@ -430,31 +622,51 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
 
     <script>
-      const inputSearch = document.getElementById('inputSearch');
-      const searchBtn = document.getElementById('searchBtn');
-      const profileDisplay = document.getElementById('profile-display');
-      const treeViewer = document.getElementById('tree-viewer');
-      const profileCard = document.getElementById('profile-card');
-      const repoGrid = document.getElementById('repo-grid');
-      const statusDiv = document.getElementById('status');
-      const repoFilterInput = document.getElementById('repoFilter');
-      const closeTree = document.getElementById('closeTree');
-      const treeList = document.getElementById('tree-list');
-      const previewContent = document.getElementById('preview-content');
-      const breadcrumb = document.getElementById('breadcrumb');
-      const viewingRepoName = document.getElementById('viewing-repo-name');
-      const resultTitle = document.getElementById('result-title');
-      const readmeContainer = document.getElementById('readme-container');
-      const readmeContent = document.getElementById('readme-content');
-      
-      const modeUser = document.getElementById('modeUser');
-      const modeRepo = document.getElementById('modeRepo');
+      // ─── DOM refs ────────────────────────────────────────────────────────────
+      const inputSearch      = document.getElementById('inputSearch');
+      const searchBtn        = document.getElementById('searchBtn');
+      const profileDisplay   = document.getElementById('profile-display');
+      const treeViewer       = document.getElementById('tree-viewer');
+      const profileCard      = document.getElementById('profile-card');
+      const repoGrid         = document.getElementById('repo-grid');
+      const statusDiv        = document.getElementById('status');
+      const repoFilterInput  = document.getElementById('repoFilter');
+      const closeTree        = document.getElementById('closeTree');
+      const treeList         = document.getElementById('tree-list');
+      const previewContent   = document.getElementById('preview-content');
+      const breadcrumb       = document.getElementById('breadcrumb');
+      const viewingRepoName  = document.getElementById('viewing-repo-name');
+      const resultTitle      = document.getElementById('result-title');
+      const readmeContainer  = document.getElementById('readme-container');
+      const readmeContent    = document.getElementById('readme-content');
+      const modeUser         = document.getElementById('modeUser');
+      const modeRepo         = document.getElementById('modeRepo');
+      const loadMoreContainer = document.getElementById('load-more-container');
+      const loadMoreBtn      = document.getElementById('load-more-btn');
+      const repoCountLabel   = document.getElementById('repo-count-label');
+      const dlCurrentFolderBtn = document.getElementById('dl-current-folder-btn');
+      const dlFileBtn        = document.getElementById('dl-file-btn');
+      const previewFilename  = document.getElementById('preview-filename');
+      const dlToast          = document.getElementById('dl-toast');
+      const dlToastTitle     = document.getElementById('dl-toast-title');
+      const dlToastBar       = document.getElementById('dl-toast-bar');
+      const dlToastMsg       = document.getElementById('dl-toast-msg');
 
-      let currentRepos = []; 
-      let activeRepoPath = "";
-      let pathStack = [];
-      let searchMode = "user";
+      // ─── State ───────────────────────────────────────────────────────────────
+      let currentRepos    = [];
+      let displayedCount  = 0;
+      const PAGE_SIZE     = 12;  // repos shown before "Load More"
+      let activeRepoPath  = "";
+      let currentBranch   = "main";
+      let pathStack       = [];
+      let searchMode      = "user";
+      let currentUserLogin = "";
+      let currentSearchKeywords = "";
+      let currentPage     = 1;    // for search mode pagination
+      let totalSearchCount = 0;
+      let isLoadingMore   = false;
 
+      // ─── Mode toggle ─────────────────────────────────────────────────────────
       modeUser.onclick = () => {
         searchMode = "user";
         modeUser.classList.add('active');
@@ -469,12 +681,34 @@
         inputSearch.placeholder = "Enter repository keywords...";
       };
 
+      // ─── Status helpers ───────────────────────────────────────────────────────
       const showStatus = (msg) => {
         statusDiv.innerHTML = `<div class="loading-spinner">${msg}</div>`;
       };
-
       const clearStatus = () => statusDiv.innerHTML = '';
 
+      // ─── Toast helpers ────────────────────────────────────────────────────────
+      let toastTimer = null;
+
+      function showToast(title, msg, pct = 0) {
+        dlToastTitle.textContent = title;
+        dlToastMsg.textContent = msg;
+        dlToastBar.style.width = pct + '%';
+        dlToast.classList.add('show');
+        if (toastTimer) clearTimeout(toastTimer);
+      }
+
+      function updateToast(msg, pct) {
+        dlToastMsg.textContent = msg;
+        dlToastBar.style.width = pct + '%';
+      }
+
+      function hideToast(delay = 2500) {
+        dlToastBar.style.width = '100%';
+        toastTimer = setTimeout(() => dlToast.classList.remove('show'), delay);
+      }
+
+      // ─── Search ───────────────────────────────────────────────────────────────
       const performSearch = async () => {
         const query = inputSearch.value.trim();
         if (!query) return;
@@ -483,12 +717,18 @@
         profileDisplay.style.display = 'none';
         treeViewer.style.display = 'none';
         profileCard.style.display = 'none';
+        loadMoreContainer.style.display = 'none';
+        currentRepos = [];
+        displayedCount = 0;
+        currentPage = 1;
 
         try {
           if (searchMode === "user") {
+            currentUserLogin = query;
             await fetchUserData(query);
           } else {
-            await fetchRepoData(query);
+            currentSearchKeywords = query;
+            await fetchRepoData(query, 1, false);
           }
           clearStatus();
           profileDisplay.style.display = 'block';
@@ -501,22 +741,116 @@
         const userRes = await fetch(`https://api.github.com/users/${username}`);
         if (!userRes.ok) throw new Error('User not found');
         const userData = await userRes.json();
+
+        // Fetch up to 100 per page, could paginate further if needed
         const repoRes = await fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=100`);
         currentRepos = await repoRes.json();
         displayProfile(userData);
         resultTitle.textContent = `${userData.login}'s Repositories`;
-        displayRepos(currentRepos);
+        displayedCount = 0;
+        renderRepoPage();
       }
 
-      async function fetchRepoData(keywords) {
-        const res = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(keywords)}&sort=stars&order=desc`);
+      async function fetchRepoData(keywords, page, append) {
+        const res = await fetch(
+          `https://api.github.com/search/repositories?q=${encodeURIComponent(keywords)}&sort=stars&order=desc&per_page=30&page=${page}`
+        );
         if (!res.ok) throw new Error('Search failed');
         const data = await res.json();
-        currentRepos = data.items;
+        totalSearchCount = data.total_count;
+        if (append) {
+          currentRepos = currentRepos.concat(data.items);
+        } else {
+          currentRepos = data.items;
+          displayedCount = 0;
+        }
         resultTitle.textContent = `Search Results for "${keywords}"`;
-        displayRepos(currentRepos);
+        renderRepoPage();
       }
 
+      // Renders PAGE_SIZE repos at a time
+      function renderRepoPage() {
+        const slice = currentRepos.slice(displayedCount, displayedCount + PAGE_SIZE);
+        if (displayedCount === 0) repoGrid.innerHTML = '';
+
+        slice.forEach(repo => {
+          const card = document.createElement('div');
+          card.className = 'repo-card';
+          const downloadUrl = `https://codeload.github.com/${repo.owner.login}/${repo.name}/zip/refs/heads/${repo.default_branch || 'main'}`;
+
+          card.innerHTML = `
+            <div>
+              <div class="repo-title-container">
+                <span class="repo-owner">${repo.owner.login} /</span>
+                <span class="repo-title">${repo.name}</span>
+              </div>
+              <p class="repo-description">${repo.description || 'No description provided.'}</p>
+              <div class="repo-meta">
+                ${repo.language ? `<span class="lang-tag">${repo.language}</span>` : ''}
+                <span>⭐ ${repo.stargazers_count.toLocaleString()}</span>
+              </div>
+            </div>
+            <div class="action-btns">
+              <button class="view-btn" onclick="event.stopPropagation(); openRepoTree('${repo.owner.login}', '${repo.name}', '${repo.default_branch || 'main'}')">View Files</button>
+              <a href="${downloadUrl}" class="download-link" onclick="event.stopPropagation()">ZIP</a>
+            </div>
+          `;
+          card.onclick = () => openRepoTree(repo.owner.login, repo.name, repo.default_branch || 'main');
+          repoGrid.appendChild(card);
+        });
+
+        displayedCount += slice.length;
+        updateLoadMoreBtn();
+      }
+
+      function updateLoadMoreBtn() {
+        const hasMore = displayedCount < currentRepos.length ||
+          (searchMode === 'repo' && currentRepos.length < Math.min(totalSearchCount, 300));
+
+        if (hasMore) {
+          loadMoreContainer.style.display = 'block';
+          repoCountLabel.textContent = `Showing ${displayedCount} of ${
+            searchMode === 'repo'
+              ? totalSearchCount.toLocaleString() + ' results'
+              : currentRepos.length + ' repositories'
+          }`;
+        } else {
+          if (currentRepos.length > 0) {
+            loadMoreContainer.style.display = 'block';
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.innerHTML = `<span class="material-icons" style="font-size:18px;">check</span> All loaded`;
+            repoCountLabel.textContent = `Showing all ${displayedCount} repositories`;
+          } else {
+            loadMoreContainer.style.display = 'none';
+          }
+        }
+      }
+
+      loadMoreBtn.onclick = async () => {
+        if (isLoadingMore) return;
+        isLoadingMore = true;
+        loadMoreBtn.disabled = true;
+        loadMoreBtn.innerHTML = `<span class="material-icons" style="font-size:18px; animation: spin 1s linear infinite;">refresh</span> Loading...`;
+
+        try {
+          if (searchMode === 'user') {
+            // For user mode: repos already fully loaded (up to 100), just render next page
+            renderRepoPage();
+          } else {
+            // For search mode: fetch next page from API
+            currentPage++;
+            await fetchRepoData(currentSearchKeywords, currentPage, true);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+
+        isLoadingMore = false;
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.innerHTML = `<span class="material-icons" style="font-size:18px;">expand_more</span> Load More Repositories`;
+      };
+
+      // ─── Profile ──────────────────────────────────────────────────────────────
       function displayProfile(user) {
         profileCard.style.display = 'flex';
         profileCard.innerHTML = `
@@ -528,58 +862,29 @@
         `;
       }
 
-      function displayRepos(repos) {
-        repoGrid.innerHTML = '';
-        if (repos.length === 0) {
-          repoGrid.innerHTML = '<p style="padding: 20px;">No repositories found.</p>';
-          return;
-        }
-
-        repos.forEach(repo => {
-          const card = document.createElement('div');
-          card.className = 'repo-card';
-          const downloadUrl = `https://codeload.github.com/${repo.owner.login}/${repo.name}/zip/refs/heads/${repo.default_branch || 'main'}`;
-          
-          card.innerHTML = `
-            <div>
-              <div class="repo-title-container">
-                <span class="repo-owner">${repo.owner.login} /</span>
-                <span class="repo-title">${repo.name}</span>
-              </div>
-              <p class="repo-description">${repo.description || 'No description provided.'}</p>
-              <div class="repo-meta">
-                ${repo.language ? `<span class="lang-tag">${repo.language}</span>` : ''}
-                <span>⭐ ${repo.stargazers_count}</span>
-              </div>
-            </div>
-            <div class="action-btns">
-              <button class="view-btn" onclick="openRepoTree('${repo.owner.login}', '${repo.name}')">View Files</button>
-              <a href="${downloadUrl}" class="download-link" onclick="event.stopPropagation()">ZIP</a>
-            </div>
-          `;
-          card.onclick = () => openRepoTree(repo.owner.login, repo.name);
-          repoGrid.appendChild(card);
-        });
-      }
-
-      async function openRepoTree(owner, repo) {
+      // ─── Repo tree ────────────────────────────────────────────────────────────
+      async function openRepoTree(owner, repo, branch) {
         activeRepoPath = `${owner}/${repo}`;
+        currentBranch = branch || 'main';
         pathStack = [];
         profileDisplay.style.display = 'none';
         treeViewer.style.display = 'block';
         viewingRepoName.textContent = repo;
         readmeContainer.style.display = 'none';
         previewContent.innerHTML = '<p style="color: var(--text-secondary); text-align: center; margin-top: 100px;">Select a file to preview</p>';
-        
+        previewFilename.textContent = 'No file selected';
+        dlFileBtn.classList.add('hidden');
+        dlFileBtn.href = '#';
+
         await loadPath("");
       }
 
       async function loadPath(path) {
-        treeList.innerHTML = '<p style="padding: 15px; font-size: 0.8rem;">Loading contents...</p>';
+        treeList.innerHTML = '<p style="padding: 15px; font-size: 0.8rem; color: var(--text-secondary);">Loading contents...</p>';
         try {
           const res = await fetch(`https://api.github.com/repos/${activeRepoPath}/contents/${path}`);
           const data = await res.json();
-          renderTree(data);
+          renderTree(data, path);
           renderBreadcrumb();
 
           if (path === "") {
@@ -606,20 +911,38 @@
         }
       }
 
-      function renderTree(items) {
+      function renderTree(items, currentPath) {
         treeList.innerHTML = '';
         if (!Array.isArray(items)) return;
 
         items.sort((a, b) => (b.type === 'dir') - (a.type === 'dir')).forEach(item => {
           const div = document.createElement('div');
           div.className = 'tree-item';
+
           const icon = item.type === 'dir' ? 'folder' : 'insert_drive_file';
           const iconClass = item.type === 'dir' ? 'folder' : 'file';
+          const isDir = item.type === 'dir';
+
+          const dlBtn = document.createElement('button');
+          dlBtn.className = 'tree-item-dl' + (isDir ? ' folder-dl' : '');
+          dlBtn.innerHTML = `<span class="material-icons" style="font-size:12px;">${isDir ? 'folder_zip' : 'download'}</span>${isDir ? 'ZIP' : 'DL'}`;
+          dlBtn.title = isDir ? `Download folder "${item.name}" as ZIP` : `Download "${item.name}"`;
+
+          dlBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (isDir) {
+              const folderPath = currentPath ? `${currentPath}/${item.name}` : item.name;
+              downloadFolder(folderPath, item.name);
+            } else {
+              downloadSingleFile(item.download_url, item.name);
+            }
+          };
 
           div.innerHTML = `
             <span class="material-icons ${iconClass}">${icon}</span>
-            <span>${item.name}</span>
+            <span class="tree-item-name">${item.name}</span>
           `;
+          div.appendChild(dlBtn);
 
           div.onclick = () => {
             if (item.type === 'dir') {
@@ -629,38 +952,48 @@
               previewFile(item);
             }
           };
+
           treeList.appendChild(div);
         });
       }
 
+      // ─── File preview ─────────────────────────────────────────────────────────
       async function previewFile(item) {
-        previewContent.innerHTML = '<p style="text-align: center; margin-top: 50px;">Opening file...</p>';
+        previewContent.innerHTML = '<p style="text-align: center; margin-top: 50px; color: var(--text-secondary);">Opening file...</p>';
+        previewFilename.textContent = item.name;
+
+        // Set up file download button
+        dlFileBtn.href = item.download_url;
+        dlFileBtn.download = item.name;
+        dlFileBtn.onclick = (e) => {
+          e.preventDefault();
+          downloadSingleFile(item.download_url, item.name);
+        };
+        dlFileBtn.classList.remove('hidden');
+
         const ext = item.name.split('.').pop().toLowerCase();
-        
+
         if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) {
           previewContent.innerHTML = `<div class="img-container"><img src="${item.download_url}" class="preview-img" alt="${item.name}"></div>`;
         } else {
           try {
             const res = await fetch(item.download_url);
             const text = await res.text();
-            
+
             const langMap = {
               'js': 'javascript', 'py': 'python', 'css': 'css', 'html': 'markup',
               'json': 'json', 'ts': 'typescript', 'md': 'markup', 'sh': 'bash'
             };
             const langClass = langMap[ext] || 'text';
-            
-            // Re-creating elements to ensure no old styling persists
+
             previewContent.innerHTML = '';
             const pre = document.createElement('pre');
             pre.className = `language-${langClass}`;
             const code = document.createElement('code');
             code.className = `language-${langClass}`;
-            code.textContent = text; // innerText/textContent preserves line breaks
-            
+            code.textContent = text;
             pre.appendChild(code);
             previewContent.appendChild(pre);
-            
             Prism.highlightElement(code);
           } catch (e) {
             previewContent.innerHTML = `<p style="color: #f85149; text-align: center; margin-top: 50px;">Could not preview this file.</p>`;
@@ -668,6 +1001,85 @@
         }
       }
 
+      // ─── Download: single file ─────────────────────────────────────────────────
+      async function downloadSingleFile(url, filename) {
+        showToast(`Downloading ${filename}`, 'Fetching file...', 30);
+        try {
+          const res = await fetch(url);
+          const blob = await res.blob();
+          updateToast('Saving...', 80);
+          triggerDownload(blob, filename);
+          hideToast();
+        } catch (e) {
+          updateToast('Download failed', 0);
+          hideToast(3000);
+        }
+      }
+
+      // ─── Download: folder as ZIP (recursive) ──────────────────────────────────
+      async function downloadFolder(folderPath, folderName) {
+        showToast(`Zipping "${folderName}"`, 'Collecting files...', 5);
+        const zip = new JSZip();
+        try {
+          await collectFilesIntoZip(zip, folderPath, folderName, { done: 0, total: 0 });
+          updateToast('Building ZIP...', 90);
+          const blob = await zip.generateAsync({ type: 'blob' }, (meta) => {
+            updateToast(`Compressing... ${meta.percent.toFixed(0)}%`, 80 + meta.percent * 0.1);
+          });
+          triggerDownload(blob, `${folderName}.zip`);
+          hideToast();
+        } catch (e) {
+          console.error(e);
+          updateToast('Download failed: ' + e.message, 0);
+          hideToast(4000);
+        }
+      }
+
+      async function collectFilesIntoZip(zip, apiPath, zipPath, progress) {
+        const res = await fetch(`https://api.github.com/repos/${activeRepoPath}/contents/${apiPath}`);
+        if (!res.ok) throw new Error(`API error for path: ${apiPath}`);
+        const items = await res.json();
+        if (!Array.isArray(items)) throw new Error('Unexpected API response');
+
+        progress.total += items.filter(i => i.type === 'file').length;
+
+        const promises = items.map(async (item) => {
+          if (item.type === 'file') {
+            try {
+              const fileRes = await fetch(item.download_url);
+              const fileBlob = await fileRes.blob();
+              const arrayBuffer = await fileBlob.arrayBuffer();
+              zip.file(`${zipPath}/${item.name}`, arrayBuffer);
+              progress.done++;
+              const pct = Math.min(85, 5 + (progress.done / Math.max(progress.total, 1)) * 80);
+              updateToast(`Fetching files (${progress.done}/${progress.total})...`, pct);
+            } catch (e) {
+              console.warn(`Skipped: ${item.path}`);
+            }
+          } else if (item.type === 'dir') {
+            await collectFilesIntoZip(zip, item.path, `${zipPath}/${item.name}`, progress);
+          }
+        });
+
+        await Promise.all(promises);
+      }
+
+      // ─── Download: current folder button ──────────────────────────────────────
+      dlCurrentFolderBtn.onclick = () => {
+        const folderName = pathStack.length > 0 ? pathStack[pathStack.length - 1] : activeRepoPath.split('/')[1];
+        const apiPath = pathStack.join('/');
+        if (apiPath === '') {
+          // Root: use full repo ZIP via codeload
+          const owner = activeRepoPath.split('/')[0];
+          const repo = activeRepoPath.split('/')[1];
+          const url = `https://codeload.github.com/${owner}/${repo}/zip/refs/heads/${currentBranch}`;
+          window.open(url, '_blank');
+        } else {
+          downloadFolder(apiPath, folderName);
+        }
+      };
+
+      // ─── Breadcrumb ───────────────────────────────────────────────────────────
       function renderBreadcrumb() {
         breadcrumb.innerHTML = '';
         const root = document.createElement('span');
@@ -679,6 +1091,7 @@
           const sep = document.createElement('span');
           sep.textContent = ' / ';
           sep.style.color = 'var(--text-secondary)';
+          sep.style.cursor = 'default';
           breadcrumb.appendChild(sep);
 
           const crumb = document.createElement('span');
@@ -691,6 +1104,19 @@
         });
       }
 
+      // ─── Helpers ─────────────────────────────────────────────────────────────
+      function triggerDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }
+
+      // ─── Events ───────────────────────────────────────────────────────────────
       closeTree.onclick = () => {
         treeViewer.style.display = 'none';
         profileDisplay.style.display = 'block';
@@ -698,12 +1124,43 @@
 
       repoFilterInput.addEventListener('input', (e) => {
         const term = e.target.value.toLowerCase();
-        const filtered = currentRepos.filter(repo => 
-          repo.name.toLowerCase().includes(term) || 
+        const filtered = currentRepos.filter(repo =>
+          repo.name.toLowerCase().includes(term) ||
           (repo.description && repo.description.toLowerCase().includes(term)) ||
           repo.owner.login.toLowerCase().includes(term)
         );
-        displayRepos(filtered);
+        // Render filtered set directly (no pagination when filtering)
+        repoGrid.innerHTML = '';
+        if (filtered.length === 0) {
+          repoGrid.innerHTML = '<p style="padding: 20px; color: var(--text-secondary);">No repositories match that filter.</p>';
+          loadMoreContainer.style.display = 'none';
+          return;
+        }
+        filtered.forEach(repo => {
+          const card = document.createElement('div');
+          card.className = 'repo-card';
+          const downloadUrl = `https://codeload.github.com/${repo.owner.login}/${repo.name}/zip/refs/heads/${repo.default_branch || 'main'}`;
+          card.innerHTML = `
+            <div>
+              <div class="repo-title-container">
+                <span class="repo-owner">${repo.owner.login} /</span>
+                <span class="repo-title">${repo.name}</span>
+              </div>
+              <p class="repo-description">${repo.description || 'No description provided.'}</p>
+              <div class="repo-meta">
+                ${repo.language ? `<span class="lang-tag">${repo.language}</span>` : ''}
+                <span>⭐ ${repo.stargazers_count.toLocaleString()}</span>
+              </div>
+            </div>
+            <div class="action-btns">
+              <button class="view-btn" onclick="event.stopPropagation(); openRepoTree('${repo.owner.login}', '${repo.name}', '${repo.default_branch || 'main'}')">View Files</button>
+              <a href="${downloadUrl}" class="download-link" onclick="event.stopPropagation()">ZIP</a>
+            </div>
+          `;
+          card.onclick = () => openRepoTree(repo.owner.login, repo.name, repo.default_branch || 'main');
+          repoGrid.appendChild(card);
+        });
+        loadMoreContainer.style.display = 'none';
       });
 
       searchBtn.onclick = performSearch;
