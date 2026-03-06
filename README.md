@@ -19,4 +19,4 @@ run it
 python http.server 5000 # or python3
 ```
 
-# please give me a star if you like this application and fork it and submit a pull request if you have any improvements!
+please give me a star if you like this application and fork it and submit a pull request if you have any improvements!
